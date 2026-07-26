@@ -8,9 +8,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Copilote IA QA"
     app_env: str = "development"
-    app_version: str = "0.2.0"
+    app_version: str = "0.4.0"
     log_level: str = "INFO"
     database_url: str = "sqlite+pysqlite:///./copilote_qa.db"
+    policy_path: str = "policies/qa-rules-v1.0.json"
 
     model_config = SettingsConfigDict(
         env_file=".env",

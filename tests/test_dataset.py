@@ -1,12 +1,17 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from app.dataset import dataset_summary, load_dataset
+from app.schemas import DemoDataset
 
 DATASET_PATH = Path("data/demo_dataset_v0.1.json")
 
 
-def test_dataset_has_expected_volume() -> None:
+def test_dataset_has_week_one_expected_volume() -> None:
     dataset = load_dataset(DATASET_PATH)
     assert dataset_summary(dataset) == {
         "version": "0.1",
@@ -82,3 +87,61 @@ def test_all_test_result_counts_are_consistent() -> None:
     dataset = load_dataset(DATASET_PATH)
     for result in dataset.test_results:
         assert result.passed + result.failed + result.skipped == result.total
+
+
+def test_all_ticket_pr_commit_build_test_chains_are_consistent() -> None:
+    dataset = load_dataset(DATASET_PATH)
+    tickets = {item.id: item for item in dataset.tickets}
+    pull_requests = {item.id: item for item in dataset.pull_requests}
+    commits = {item.sha: item for item in dataset.commits}
+    results_by_build = {item.build_id: item for item in dataset.test_results}
+
+    for build in dataset.builds:
+        pull_request = pull_requests[build.pull_request_id]
+        commit = commits[build.commit_sha]
+        ticket = tickets[pull_request.ticket_id]
+        result = results_by_build[build.id]
+        assert commit.ticket_id == pull_request.ticket_id == ticket.id
+        assert build.sprint_id == ticket.sprint_id
+        assert commit.committed_at <= pull_request.created_at <= build.started_at
+        assert build.finished_at <= result.executed_at
+        assert result.executed_at.date() <= dataset.reference_date
+
+
+def test_bl012_chain_has_functional_ticket_and_chronology() -> None:
+    dataset = load_dataset(DATASET_PATH)
+    build = next(item for item in dataset.builds if item.id == "BLD-012")
+    pull_request = next(item for item in dataset.pull_requests if item.id == build.pull_request_id)
+    commit = next(item for item in dataset.commits if item.sha == build.commit_sha)
+
+    assert pull_request.ticket_id == "TKT-047"
+    assert commit.ticket_id == "TKT-047"
+    assert "TKT-047" in pull_request.title
+    assert "TKT-047" in commit.message
+    assert commit.committed_at <= pull_request.created_at <= build.started_at
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (
+            lambda payload: payload["builds"][0].update({"started_at": "2026-06-08T09:00:00Z"}),
+            "invalid chain dates",
+        ),
+        (
+            lambda payload: payload["commits"][1].update({"ticket_id": "TKT-001"}),
+            "links pull request",
+        ),
+        (
+            lambda payload: payload["test_results"][0].update(
+                {"executed_at": "2026-06-08T09:00:00Z"}
+            ),
+            "executes before build",
+        ),
+    ],
+)
+def test_temporally_or_functionally_invalid_dataset_is_rejected(mutation, expected: str) -> None:
+    payload = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    mutation(payload)
+    with pytest.raises(ValidationError, match=expected):
+        DemoDataset.model_validate(payload)

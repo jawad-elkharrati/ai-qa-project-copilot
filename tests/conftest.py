@@ -8,10 +8,15 @@ os.environ["APP_ENV"] = "test"
 from app.db import Base, SessionLocal, engine  # noqa: E402
 
 
+@pytest.fixture(scope="session", autouse=True)
+def dispose_test_engine():
+    yield
+    engine.dispose()
+
+
 @pytest.fixture
 def db_session():
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as session:
         yield session
     Base.metadata.drop_all(bind=engine)
-

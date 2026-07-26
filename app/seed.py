@@ -16,6 +16,7 @@ from app.models import (
     PullRequest,
     Report,
     Risk,
+    RiskAnalysis,
     Sprint,
     TestResult,
     Ticket,
@@ -29,6 +30,7 @@ def _clear_project(session: Session, project_id: str) -> None:
     )
     for model in (TestResult, Build, PullRequest, Commit, Risk, Report, Metric, Ticket, Sprint):
         session.execute(delete(model).where(model.project_id == project_id))
+    session.execute(delete(RiskAnalysis).where(RiskAnalysis.project_id == project_id))
     session.execute(delete(Project).where(Project.id == project_id))
     session.flush()
 
@@ -45,11 +47,16 @@ def seed_dataset(session: Session, dataset: DemoDataset, reset: bool = False) ->
         _clear_project(session, dataset.project.id)
 
     session.add(Project(**dataset.project.model_dump()))
+    session.flush()
     session.add_all(Sprint(**row) for row in _rows(dataset.sprints))
+    session.flush()
     session.add_all(Ticket(**row) for row in _rows(dataset.tickets))
+    session.flush()
     session.add_all(Commit(**row) for row in _rows(dataset.commits))
     session.add_all(PullRequest(**row) for row in _rows(dataset.pull_requests))
+    session.flush()
     session.add_all(Build(**row) for row in _rows(dataset.builds))
+    session.flush()
     session.add_all(TestResult(**row) for row in _rows(dataset.test_results))
     session.add_all(Metric(**row) for row in _rows(dataset.metrics))
     session.add_all(Risk(**row) for row in _rows(dataset.risks))

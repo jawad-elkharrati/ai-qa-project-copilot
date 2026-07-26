@@ -118,16 +118,21 @@ class MetricData(BaseModel):
 
 class RiskData(BaseModel):
     id: str
+    analysis_id: str | None = None
     project_id: str
     sprint_id: str | None = None
     rule_id: str
     title: str
     description: str
     severity: str
+    priority: int = Field(default=4, ge=1, le=4)
     score: float = Field(ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
     source_type: str
     source_id: str
+    evidence: dict = Field(default_factory=dict)
+    recommendation: str = ""
+    requires_human_validation: bool = True
     status: str
     detected_at: datetime
 
@@ -212,6 +217,9 @@ class DemoDataset(BaseModel):
         invalid_builds = [item.id for item in self.test_results if item.build_id not in build_ids]
         if invalid_builds:
             raise ValueError(f"test results reference unknown builds: {invalid_builds}")
+        from app.dataset_validation import validate_dataset_consistency
+
+        validate_dataset_consistency(self)
         return self
 
     @staticmethod
@@ -228,4 +236,3 @@ class DemoDataset(BaseModel):
         ]
         if invalid:
             raise ValueError(f"{label} contains unknown references on: {invalid}")
-
