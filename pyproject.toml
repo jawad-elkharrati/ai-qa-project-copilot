@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "dashboard*"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --cov=app --cov-report=term-missing"
