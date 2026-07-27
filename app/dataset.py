@@ -25,4 +25,3 @@ def dataset_summary(dataset: DemoDataset) -> dict[str, int | str]:
         "reports": len(dataset.reports),
         "expected_anomalies": len(dataset.expected_anomalies),
     }
-

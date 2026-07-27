@@ -7,9 +7,7 @@ from app.dataset import dataset_summary, load_dataset
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate and summarize the demo dataset")
-    parser.add_argument(
-        "--dataset", type=Path, default=Path("data/demo_dataset_v0.1.json")
-    )
+    parser.add_argument("--dataset", type=Path, default=Path("data/demo_dataset_v0.1.json"))
     args = parser.parse_args()
     dataset = load_dataset(args.dataset)
     result = dataset_summary(dataset)
@@ -23,4 +21,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

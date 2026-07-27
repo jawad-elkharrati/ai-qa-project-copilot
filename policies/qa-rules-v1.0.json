@@ -1,0 +1,169 @@
+{
+  "id": "qa-rules",
+  "version": "1.0",
+  "description": "Politiques QA déterministes du MVP NovaShop.",
+  "policies": [
+    {
+      "id": "QA-BLOCKED-LONG",
+      "version": 1,
+      "name": "Ticket bloqué trop longtemps",
+      "description": "Détecte un ticket bloqué depuis plus de 72 heures.",
+      "entity_type": "ticket",
+      "severity": "high",
+      "weight": 20.0,
+      "condition": {
+        "metric": "blocked_hours",
+        "operator": "greater_than",
+        "value": 72.0
+      },
+      "normalization": {
+        "strategy": "ratio",
+        "divisor": 144.0
+      },
+      "aggregation": {
+        "strategy": "max_with_count_bonus",
+        "count_bonus": 0.15
+      },
+      "severity_overrides": [
+        {
+          "condition": {
+            "metric": "active_high_priority",
+            "operator": "equal",
+            "value": true
+          },
+          "severity": "critical"
+        }
+      ],
+      "recommendation": "Identifier le propriétaire du blocage, confirmer la dépendance et convenir d'une date d'escalade.",
+      "enabled": true
+    },
+    {
+      "id": "QA-TICKET-OVERDUE",
+      "version": 1,
+      "name": "Ticket en retard",
+      "description": "Détecte un ticket non terminé dont l'échéance est dépassée.",
+      "entity_type": "ticket",
+      "severity": "medium",
+      "weight": 15.0,
+      "condition": {
+        "metric": "overdue_days",
+        "operator": "greater_than",
+        "value": 0.0
+      },
+      "normalization": {
+        "strategy": "ratio",
+        "divisor": 7.0
+      },
+      "aggregation": {
+        "strategy": "max_with_count_bonus",
+        "count_bonus": 0.15
+      },
+      "severity_overrides": [
+        {
+          "condition": {
+            "metric": "active_high_priority",
+            "operator": "equal",
+            "value": true
+          },
+          "severity": "high"
+        }
+      ],
+      "recommendation": "Réévaluer l'échéance et le reste à faire avec le responsable du ticket, puis valider une replanification ou une escalade.",
+      "enabled": true
+    },
+    {
+      "id": "QA-CRITICAL-BUG-OPEN",
+      "version": 1,
+      "name": "Bug critique toujours ouvert",
+      "description": "Détecte un bug critique qui n'est pas terminé.",
+      "entity_type": "ticket",
+      "severity": "critical",
+      "weight": 25.0,
+      "condition": {
+        "metric": "open_critical_bug",
+        "operator": "equal",
+        "value": true
+      },
+      "normalization": {
+        "strategy": "boolean",
+        "divisor": 1.0
+      },
+      "aggregation": {
+        "strategy": "max_with_count_bonus",
+        "count_bonus": 0.15
+      },
+      "severity_overrides": [],
+      "recommendation": "Confirmer l'impact métier, désigner un responsable et valider le traitement prioritaire avant la prochaine mise en production.",
+      "enabled": true
+    },
+    {
+      "id": "QA-PIPELINE-FAILED",
+      "version": 1,
+      "name": "Pipeline en échec non rétabli",
+      "description": "Détecte un dernier pipeline en échec.",
+      "entity_type": "build",
+      "severity": "high",
+      "weight": 25.0,
+      "condition": {
+        "metric": "consecutive_failed_builds",
+        "operator": "greater_than",
+        "value": 0.0
+      },
+      "normalization": {
+        "strategy": "ratio",
+        "divisor": 2.0
+      },
+      "aggregation": {
+        "strategy": "max_with_count_bonus",
+        "count_bonus": 0.15
+      },
+      "severity_overrides": [
+        {
+          "condition": {
+            "metric": "consecutive_failed_builds",
+            "operator": "greater_or_equal",
+            "value": 2.0
+          },
+          "severity": "critical"
+        }
+      ],
+      "recommendation": "Analyser le dernier journal CI, identifier le premier test en échec et faire valider le correctif avant de relancer le pipeline.",
+      "enabled": true
+    },
+    {
+      "id": "QA-COVERAGE-LOW",
+      "version": 1,
+      "name": "Couverture de tests insuffisante",
+      "description": "Détecte une couverture de tests inférieure à 70 %.",
+      "entity_type": "metric",
+      "severity": "high",
+      "weight": 15.0,
+      "condition": {
+        "metric": "coverage_percent",
+        "operator": "less_than",
+        "value": 70.0
+      },
+      "normalization": {
+        "strategy": "distance_below",
+        "baseline": 70.0,
+        "divisor": 30.0
+      },
+      "aggregation": {
+        "strategy": "max_with_count_bonus",
+        "count_bonus": 0.15
+      },
+      "severity_overrides": [
+        {
+          "condition": {
+            "metric": "coverage_percent",
+            "operator": "less_than",
+            "value": 50.0
+          },
+          "severity": "critical"
+        }
+      ],
+      "recommendation": "Identifier les chemins critiques non couverts et faire valider un plan de tests ciblé avant la prochaine livraison.",
+      "enabled": true
+    }
+  ]
+}

@@ -1,22 +1,53 @@
-.venv/
+# Python
 __pycache__/
 *.py[cod]
-*.sqlite3
-*.db
-.env
-.pytest_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+*.egg-info/
 dist/
 build/
-*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Tests and quality tools
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE
 .idea/
 .vscode/
-reports/generated/
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# Logs and generated content
+*.log
+logs/
 reports/
+reports/generated/
+generated/
+
+# Internal working files
+.codex/
+.agents/
+prompts/
+notes/
 Plan_action_*.pdf
 docs/demo_semaine_*.md
 docs/validation_encadrant.md
-.agents/
-.codex/
