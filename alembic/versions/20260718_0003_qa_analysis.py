@@ -1,4 +1,4 @@
-"""Add QA analysis and explainable risk fields.
+"""Add the week-three QA analysis and explainable risk fields.
 
 Revision ID: 20260718_0003
 Revises: 20260714_0002

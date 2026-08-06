@@ -1,4 +1,4 @@
-"""Create the foundation schema.
+"""Create the week-one foundation schema.
 
 Revision ID: 20260713_0001
 Revises:

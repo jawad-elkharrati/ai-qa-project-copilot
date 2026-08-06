@@ -84,8 +84,18 @@ def test_repeating_same_analysis_is_idempotent(db_session) -> None:
     second = analyze("SPR-003").json()
 
     assert first["analysis_id"] == second["analysis_id"]
-    assert db_session.scalar(select(func.count()).select_from(RiskAnalysis)) == 1
-    assert db_session.scalar(select(func.count()).select_from(Risk)) == 6
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(RiskAnalysis)
+            .where(RiskAnalysis.sprint_id == "SPR-003")
+        )
+        == 1
+    )
+    assert (
+        db_session.scalar(select(func.count()).select_from(Risk).where(Risk.sprint_id == "SPR-003"))
+        == 6
+    )
 
 
 def test_unknown_scope_and_missing_analysis_return_controlled_404(db_session) -> None:

@@ -1,4 +1,4 @@
-"""Add the ingestion journal.
+"""Add the week-two ingestion journal.
 
 Revision ID: 20260714_0002
 Revises: 20260713_0001

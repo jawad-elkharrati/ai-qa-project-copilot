@@ -25,7 +25,7 @@ class SnapshotConsistencyError(RuntimeError):
 
 
 def _json_default(value):
-    if isinstance(value, (date, datetime)):
+    if isinstance(value, date | datetime):
         return value.isoformat()
     raise TypeError(f"unsupported fingerprint value: {type(value).__name__}")
 
@@ -152,7 +152,7 @@ def _contribution_id(analysis_id: str, policy_id: str) -> str:
 def _parse_datetime(value: object) -> datetime | None:
     if not value:
         return None
-    if not isinstance(value, (datetime, str)):
+    if not isinstance(value, datetime | str):
         raise TypeError(f"unsupported datetime value: {type(value).__name__}")
     return ensure_utc_datetime(value)
 

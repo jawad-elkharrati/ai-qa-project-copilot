@@ -21,6 +21,7 @@ from app.models import (
     TestResult,
     Ticket,
 )
+from app.novashop_history import NOVASHOP_PROJECT_ID, seed_novashop_history
 from app.schemas import DemoDataset
 
 
@@ -42,7 +43,16 @@ def _rows(items) -> list[dict]:
 def seed_dataset(session: Session, dataset: DemoDataset, reset: bool = False) -> dict[str, object]:
     existing = session.get(Project, dataset.project.id)
     if existing and not reset:
-        return {"status": "already_seeded", **dataset_summary(dataset)}
+        history_ids = (
+            seed_novashop_history(session, dataset.project.id)
+            if dataset.project.id == NOVASHOP_PROJECT_ID
+            else ()
+        )
+        return {
+            "status": "already_seeded",
+            "history_snapshot_count": len(history_ids),
+            **dataset_summary(dataset),
+        }
     if existing:
         _clear_project(session, dataset.project.id)
 
@@ -62,11 +72,20 @@ def seed_dataset(session: Session, dataset: DemoDataset, reset: bool = False) ->
     session.add_all(Risk(**row) for row in _rows(dataset.risks))
     session.add_all(Report(**row) for row in _rows(dataset.reports))
     session.commit()
-    return {"status": "seeded", **dataset_summary(dataset)}
+    history_ids = (
+        seed_novashop_history(session, dataset.project.id)
+        if dataset.project.id == NOVASHOP_PROJECT_ID
+        else ()
+    )
+    return {
+        "status": "seeded",
+        "history_snapshot_count": len(history_ids),
+        **dataset_summary(dataset),
+    }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Load the demo dataset into the database")
+    parser = argparse.ArgumentParser(description="Load the PFA demo dataset into the database")
     parser.add_argument(
         "--dataset",
         type=Path,

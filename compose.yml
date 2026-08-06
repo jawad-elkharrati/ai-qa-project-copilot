@@ -1,0 +1,86 @@
+x-common-image: &common-image
+  image: copilote-qa:week4-p1
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+services:
+  api:
+    <<: *common-image
+    command: ["/app/docker/api-entrypoint.sh"]
+    environment:
+      APP_NAME: ${APP_NAME:-Copilote IA QA}
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-0.4.1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-sqlite+pysqlite:////data/copilote_qa.db}
+      POLICY_PATH: ${POLICY_PATH:-/app/policies/qa-rules-v1.0.json}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - sqlite_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  dashboard:
+    <<: *common-image
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+    environment:
+      API_URL: ${DASHBOARD_API_URL:-http://api:8000}
+      PYTHONPATH: /app
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    ports:
+      - "${DASHBOARD_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sqlite_data:
+    name: ${SQLITE_VOLUME_NAME:-copilote_qa_sqlite_data}

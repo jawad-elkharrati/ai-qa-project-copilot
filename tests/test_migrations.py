@@ -28,8 +28,16 @@ def test_migrations_create_snapshot_and_contribution_schema(tmp_path) -> None:
         snapshot_columns = {
             row[1] for row in connection.execute("pragma table_info(risk_analyses)")
         }
-    assert revision == "20260724_0006"
-    assert {"risk_contributions", "risk_evidence", "risk_decisions"} <= tables
+    assert revision == "20260801_0009"
+    assert {
+        "risk_contributions",
+        "risk_evidence",
+        "risk_decisions",
+        "recommendations",
+        "recommendation_transitions",
+        "recommendation_outcomes",
+        "qa_decision_reviews",
+    } <= tables
     assert {
         "policy_hash",
         "input_fingerprint",
@@ -41,7 +49,7 @@ def test_migrations_create_snapshot_and_contribution_schema(tmp_path) -> None:
     } <= snapshot_columns
 
 
-def test_migration_upgrades_existing_qa_analysis_schema(tmp_path) -> None:
+def test_migration_upgrades_existing_week_three_schema(tmp_path) -> None:
     database_path = tmp_path / "upgrade.db"
     config = alembic_config(database_path)
     command.upgrade(config, "20260718_0003")
@@ -102,4 +110,80 @@ def test_human_decision_migration_downgrades_and_upgrades(tmp_path) -> None:
     command.upgrade(config, "head")
     with closing(sqlite3.connect(database_path)) as connection:
         revision = connection.execute("select version_num from alembic_version").fetchone()[0]
-    assert revision == "20260724_0006"
+    assert revision == "20260801_0009"
+
+
+def test_week4_migration_preserves_ambiguous_legacy_decision_without_link(tmp_path) -> None:
+    database_path = tmp_path / "legacy-decision.db"
+    config = alembic_config(database_path)
+    command.upgrade(config, "20260724_0006")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            """
+            insert into projects(id,key,name,description,created_at)
+            values ('PRJ-LEGACY','LEGACY','Legacy','Legacy project','2026-07-24')
+            """
+        )
+        connection.execute(
+            """
+            insert into risk_analyses(
+                id,project_id,sprint_id,ruleset_version,reference_date,score,severity,
+                breakdown,finding_count,agent_name,analyzed_at,policy_hash,
+                input_fingerprint,result_fingerprint,previous_snapshot_id,
+                confidence_score,evidence_coverage,missing_information,
+                stale_information,confidence_details
+            ) values (
+                'QAA-LEGACY','PRJ-LEGACY',null,'qa-rules-v1.0','2026-07-24',
+                75,'high','[]',1,'qa-agent-v1','2026-07-24','legacy',
+                'legacy','legacy',null,1.0,1.0,'[]','[]','{}'
+            )
+            """
+        )
+        connection.execute(
+            """
+            insert into risks(
+                id,analysis_id,project_id,sprint_id,rule_id,title,description,severity,
+                priority,score,confidence,source_type,source_id,evidence,recommendation,
+                requires_human_validation,status,detected_at
+            ) values (
+                'RSK-LEGACY','QAA-LEGACY','PRJ-LEGACY',null,'QA-LEGACY',
+                'Legacy risk','Legacy risk','high',2,75,1.0,'ticket','LEGACY-1',
+                '{}','Legacy recommendation',1,'open','2026-07-24'
+            )
+            """
+        )
+        connection.execute(
+            """
+            insert into risk_decisions(
+                id,risk_id,analysis_id,policy_id,status,original_recommendation,
+                modified_recommendation,comment,decided_by,decided_at,created_at,
+                previous_decision_id
+            ) values (
+                'RDC-LEGACY','RSK-LEGACY','QAA-LEGACY','QA-LEGACY','accepted',
+                'Legacy recommendation',null,'Legacy approval','qa-manager',
+                '2026-07-24','2026-07-24',null
+            )
+            """
+        )
+        connection.commit()
+
+    command.upgrade(config, "head")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        legacy = connection.execute(
+            """
+            select id,risk_id,status,original_recommendation
+            from risk_decisions where id='RDC-LEGACY'
+            """
+        ).fetchone()
+        recommendation_count = connection.execute(
+            "select count(*) from recommendations"
+        ).fetchone()[0]
+    assert legacy == (
+        "RDC-LEGACY",
+        "RSK-LEGACY",
+        "accepted",
+        "Legacy recommendation",
+    )
+    assert recommendation_count == 0

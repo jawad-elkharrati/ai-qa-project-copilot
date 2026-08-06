@@ -322,7 +322,7 @@ def _evidence_id(
 def _as_datetime(value) -> datetime | None:
     if value is None:
         return None
-    if not isinstance(value, (datetime, str)):
+    if not isinstance(value, datetime | str):
         raise TypeError(f"unsupported datetime value: {type(value).__name__}")
     return ensure_utc_datetime(value)
 

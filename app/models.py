@@ -363,6 +363,212 @@ class RiskDecision(Base):
     )
 
 
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_snapshot_id", "recommendation_key", name="uq_recommendations_snapshot_key"
+        ),
+        CheckConstraint(
+            "priority_score >= 0 AND priority_score <= 100",
+            name="ck_recommendations_priority_score_range",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1", name="ck_recommendations_confidence_range"
+        ),
+        CheckConstraint(
+            "status IN ('PROPOSED', 'ACCEPTED', 'MODIFIED', 'REJECTED', "
+            "'IN_PROGRESS', 'COMPLETED')",
+            name="ck_recommendations_status",
+        ),
+        CheckConstraint(
+            "observation_count >= 1",
+            name="ck_recommendations_observation_count_positive",
+        ),
+        Index(
+            "ix_recommendations_project_status_priority", "project_id", "status", "priority_score"
+        ),
+        Index("ix_recommendations_risk_key_status", "risk_key", "status"),
+        Index("ix_recommendations_scope_active", "project_id", "sprint_id", "resolved_snapshot_id"),
+    )
+
+    id: Mapped[str] = str_pk()
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    source_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    sprint_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_risk_id: Mapped[str] = mapped_column(
+        ForeignKey("risks.id", ondelete="CASCADE"), index=True
+    )
+    last_seen_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    last_seen_risk_id: Mapped[str] = mapped_column(
+        ForeignKey("risks.id", ondelete="CASCADE"), index=True
+    )
+    resolved_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observation_count: Mapped[int] = mapped_column(Integer, default=1)
+    policy_id: Mapped[str] = mapped_column(String(100), index=True)
+    risk_key: Mapped[str] = mapped_column(String(64))
+    recommendation_key: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    priority: Mapped[str] = mapped_column(String(30), index=True)
+    priority_score: Mapped[int] = mapped_column(Integer)
+    priority_factors: Mapped[dict] = mapped_column(JSON, default=dict)
+    priority_justification: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(String(30))
+    impact: Mapped[str] = mapped_column(String(30))
+    effort: Mapped[str] = mapped_column(String(30))
+    urgency: Mapped[str] = mapped_column(String(30))
+    confidence: Mapped[float] = mapped_column(Float)
+    latest_evidence: Mapped[list] = mapped_column(JSON, default=list)
+    latest_severity: Mapped[str] = mapped_column(String(30))
+    latest_score: Mapped[float] = mapped_column(Float)
+    latest_confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(30))
+    original_payload: Mapped[dict] = mapped_column(JSON)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    assigned_to: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RecommendationTransition(Base):
+    __tablename__ = "recommendation_transitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "recommendation_id", "sequence", name="uq_recommendation_transitions_sequence"
+        ),
+        CheckConstraint("sequence >= 1", name="ck_recommendation_transitions_sequence_positive"),
+        CheckConstraint(
+            "to_status IN ('PROPOSED', 'ACCEPTED', 'MODIFIED', 'REJECTED', "
+            "'IN_PROGRESS', 'COMPLETED')",
+            name="ck_recommendation_transitions_to_status",
+        ),
+        CheckConstraint(
+            "external_action_executed = false",
+            name="ck_recommendation_transitions_no_external_action",
+        ),
+        Index(
+            "ix_recommendation_transitions_recommendation_created",
+            "recommendation_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = str_pk()
+    recommendation_id: Mapped[str] = mapped_column(
+        ForeignKey("recommendations.id", ondelete="CASCADE"), index=True
+    )
+    source_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(120))
+    actor_role: Mapped[str] = mapped_column(String(120))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    justification: Mapped[str] = mapped_column(Text)
+    previous_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    resulting_payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    external_action_executed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RecommendationOutcome(Base):
+    __tablename__ = "recommendation_outcomes"
+    __table_args__ = (
+        UniqueConstraint(
+            "recommendation_id",
+            "observed_snapshot_id",
+            name="uq_recommendation_outcomes_observation",
+        ),
+        CheckConstraint(
+            "status IN ('NOT_YET_MEASURABLE', 'IMPROVEMENT_OBSERVED', "
+            "'NO_IMPROVEMENT_OBSERVED', 'INSUFFICIENT_DATA')",
+            name="ck_recommendation_outcomes_status",
+        ),
+    )
+
+    id: Mapped[str] = str_pk()
+    recommendation_id: Mapped[str] = mapped_column(
+        ForeignKey("recommendations.id", ondelete="CASCADE"), index=True
+    )
+    baseline_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    observed_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(40))
+    score_before: Mapped[float] = mapped_column(Float)
+    score_after: Mapped[float] = mapped_column(Float)
+    score_delta: Mapped[float] = mapped_column(Float)
+    contributions_before: Mapped[dict] = mapped_column(JSON, default=dict)
+    contributions_after: Mapped[dict] = mapped_column(JSON, default=dict)
+    policies_before: Mapped[list] = mapped_column(JSON, default=list)
+    policies_after: Mapped[list] = mapped_column(JSON, default=list)
+    observation: Mapped[str] = mapped_column(Text)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class QADecisionReview(Base):
+    __tablename__ = "qa_decision_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "suggested_decision IN "
+            "('GO', 'GO_WITH_CONDITIONS', 'NO_GO', 'INSUFFICIENT_INFORMATION')",
+            name="ck_qa_decision_reviews_suggested_decision",
+        ),
+        CheckConstraint(
+            "final_decision IS NULL OR final_decision IN "
+            "('GO', 'GO_WITH_CONDITIONS', 'NO_GO', 'INSUFFICIENT_INFORMATION')",
+            name="ck_qa_decision_reviews_final_decision",
+        ),
+        CheckConstraint(
+            "status IN ('CONFIRMED', 'OVERRIDDEN', 'REJECTED')",
+            name="ck_qa_decision_reviews_status",
+        ),
+        CheckConstraint(
+            "external_action_executed = false", name="ck_qa_decision_reviews_no_external_action"
+        ),
+        Index(
+            "ix_qa_decision_reviews_project_snapshot_created",
+            "project_id",
+            "snapshot_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = str_pk()
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("risk_analyses.id", ondelete="CASCADE"), index=True
+    )
+    suggested_decision: Mapped[str] = mapped_column(String(40))
+    final_decision: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(120))
+    actor_role: Mapped[str] = mapped_column(String(120))
+    justification: Mapped[str] = mapped_column(Text)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    previous_review_id: Mapped[str | None] = mapped_column(
+        ForeignKey("qa_decision_reviews.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    external_action_executed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Report(Base):
     __tablename__ = "reports"
 

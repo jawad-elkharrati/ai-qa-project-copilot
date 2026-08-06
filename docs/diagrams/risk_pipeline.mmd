@@ -1,0 +1,19 @@
+flowchart TD
+    DATA["NovaShop / SQLite"] --> AGG["Collecte et qualité des données"]
+    POLICY["Policies as Code"] --> SCORE["Score et contributions"]
+    AGG --> SCORE
+    SCORE --> SNAP["Snapshot idempotent et Risk Delta"]
+    SNAP --> EVIDENCE["Preuves, fraîcheur et confiance"]
+    EVIDENCE --> DECISION["Decision Engine déterministe"]
+    DECISION --> BRIEF["Decision Brief"]
+    SNAP --> RECO["Synchronisation des recommandations"]
+    RECO --> REVIEW["Transitions humaines append-only"]
+    SNAP --> DAILY["Rapport quotidien"]
+    SNAP --> WEEKLY["Agrégation hebdomadaire"]
+    BRIEF --> API["FastAPI"]
+    REVIEW --> API
+    DAILY --> API
+    WEEKLY --> API
+    API --> UI["Six vues Streamlit"]
+    UI --> HUMAN["Décision humaine finale"]
+    HUMAN -.-> SAFE["external_action_executed=false"]

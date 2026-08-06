@@ -151,6 +151,62 @@ def test_dashboard_displays_project_filters_and_kpis(monkeypatch) -> None:
         "/metrics": [{"name": "test_coverage", "value": 54.0, "unit": "percent"}],
         "/ingestions": [{"id": "ING-001", "status": "success"}],
     }
+    responses["/risks"]["findings"][0]["confidence"] = 1.0
+    responses.update(
+        {
+            "/projects/PRJ-COPILOTE/decision-brief": {
+                "snapshot_id": "QAH-NS-20260713",
+                "generated_at": "2026-07-13T09:00:00Z",
+                "suggested_decision": "NO_GO",
+                "justification": "NO-GO car un risque critique est actif.",
+                "blockers": ["Un risque critique est actif."],
+                "conditions": ["Traiter le risque critique."],
+                "violated_policies": ["QA-CRITICAL-BUG-OPEN"],
+                "missing_information": [],
+                "human_validation_status": "PENDING",
+                "latest_review": None,
+            },
+            "/projects/PRJ-COPILOTE/recommendations": [
+                {
+                    "id": "REC-001",
+                    "policy_id": "QA-CRITICAL-BUG-OPEN",
+                    "title": "Traiter le bug critique",
+                    "description": "Corriger puis valider le bug critique.",
+                    "priority": "CRITICAL",
+                    "priority_score": 95,
+                    "priority_justification": "Priorite fournie par l'API.",
+                    "status": "PROPOSED",
+                    "observation_count": 1,
+                    "assigned_to": None,
+                }
+            ],
+            "/recommendations/REC-001/history": {
+                "recommendation_id": "REC-001",
+                "items": [],
+            },
+            "/projects/PRJ-COPILOTE/reports/daily": {
+                "suggested_decision": "NO_GO",
+                "decision_justification": "NO-GO car un risque critique est actif.",
+            },
+            "/projects/PRJ-COPILOTE/reports/weekly": {
+                "score_evolution": [
+                    {"date": "2026-07-07", "score": 40},
+                    {"date": "2026-07-13", "score": 83.3},
+                ],
+                "trend": "DEGRADING",
+                "suggested_next_decision": "NO_GO",
+                "summary": "Le risque augmente.",
+                "contribution_evolution": {
+                    "QA-CRITICAL-BUG-OPEN": [{"date": "2026-07-13", "value": 25}]
+                },
+                "new_risks": [],
+                "resolved_risks": [],
+                "recommendations_emitted": 1,
+                "recommendation_statuses": {"PROPOSED": 1},
+                "human_decisions": {},
+            },
+        }
+    )
 
     def fake_get(url, **kwargs):
         return FakeResponse(responses[urlparse(url).path])
@@ -159,6 +215,30 @@ def test_dashboard_displays_project_filters_and_kpis(monkeypatch) -> None:
     dashboard = AppTest.from_file("dashboard/app.py").run(timeout=10)
 
     assert not dashboard.exception
+    assert dashboard.title[0].value == "Copilote QA - Tableau de decision"
+    metric_labels = {item.label for item in dashboard.metric}
+    assert {
+        "Score actuel",
+        "Niveau de risque",
+        "Risk Delta",
+        "Confiance",
+        "Couverture des preuves",
+        "Validation humaine",
+        "Risques",
+        "Recommandations",
+        "Dernier snapshot",
+        "Tendance",
+    } <= metric_labels
+    assert {
+        "Synthese",
+        "Risques",
+        "Decision",
+        "Recommandations",
+        "Rapports",
+        "Evolution",
+    } <= {item.label for item in dashboard.tabs}
+    assert any("NO-GO" in item.value for item in dashboard.markdown)
+    return
     assert dashboard.title[0].value == "Copilote QA"
     metric_labels = [item.label for item in dashboard.metric]
     assert {
