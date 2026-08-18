@@ -1,53 +1,33 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-
-# Virtual environments
 .venv/
 venv/
-env/
-
-# Environment variables and secrets
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite
+*.db
 .env
 .env.*
 !.env.example
-
-# Databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Tests and quality tools
 .pytest_cache/
+.pytest_tmp*/
 .ruff_cache/
 .mypy_cache/
 .coverage
-coverage.xml
 htmlcov/
-
-# IDE
+dist/
+build/
+*.egg-info/
 .idea/
 .vscode/
 
-# Operating systems
-.DS_Store
-Thumbs.db
+# Présentations et livrables générés, conservés uniquement en local
+report/
+docs/presentations/
+docs/bilan-*.md
+/*.html
+*.pptx
+*.docx
+*.inspect.ndjson
 
-# Logs and generated content
-*.log
-logs/
-reports/
-reports/generated/
-generated/
-
-# Internal working files
-.codex/
-.agents/
-prompts/
-notes/
-Plan_action_*.pdf
-docs/demo_semaine_*.md
-docs/validation_encadrant.md
+# Ancien profil PostgreSQL non utilisé par le MVP SQLite
+compose.db.yml

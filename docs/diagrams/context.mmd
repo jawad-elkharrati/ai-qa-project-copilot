@@ -1,0 +1,18 @@
+flowchart LR
+    QA["Responsable QA"]
+    PM["Responsable projet"]
+    DATA["NovaShop simulé"]
+    API["API FastAPI"]
+    DOMAIN["Moteur QA déterministe"]
+    DB[("SQLite persistant")]
+    UI["Dashboard Streamlit"]
+    EXT["Jira / GitHub / CI externes"]
+
+    DATA -->|"ingestion locale read-only"| API
+    API --> DOMAIN
+    DOMAIN -->|"snapshots, décisions, recommandations, rapports"| DB
+    DB --> API
+    UI -->|"API exclusivement"| API
+    QA --> UI
+    PM --> UI
+    API -.->|"aucune écriture; external_action_executed=false"| EXT

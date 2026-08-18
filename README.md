@@ -1,147 +1,182 @@
-# AI QA Project Copilot
+# Copilote IA pour le QA
 
-AI QA Project Copilot est un prototype d’aide à la décision pour le suivi de la qualité
-logicielle. Il consolide des données de projet, applique des politiques QA explicites et produit
-un score de risque accompagné des éléments qui ont contribué au résultat.
+MVP de suivi de projet IT qui transforme des données de projet en risques QA, décisions
+explicables, recommandations priorisées et rapports de pilotage. Jira suit le travail ; ce
+copilote ajoute une couche de décision QA mesurable, traçable et gouvernée par l’humain.
 
-Le projet complète un outil de suivi comme Jira. Il ne remplace pas la gestion des tickets et
-n’exécute aucune action externe automatiquement.
-
-## Objectif
-
-Les informations utiles à une décision de livraison sont souvent réparties entre les tickets, le
-code, les Pull Requests, la CI/CD et les résultats de tests. Le projet rassemble ces signaux dans
-un modèle commun afin de rendre le diagnostic QA vérifiable et de conserver la décision humaine.
+Le moteur est déterministe : il n’utilise pas de LLM pour calculer un score ou prendre une
+décision. Les données NovaShop sont fictives et aucune action n’est exécutée sur un système
+externe.
 
 ## Fonctionnalités
 
-- ingestion et normalisation de datasets JSON ou CSV ;
-- import idempotent et journalisation des ingestions ;
-- cinq politiques QA versionnées et validées avec Pydantic ;
-- score de risque déterministe de 0 à 100 ;
-- contribution détaillée de chaque politique au score ;
-- chaîne de preuves entre tickets, Pull Requests, commits, builds et tests ;
-- signalement des relations manquantes ;
-- snapshots idempotents identifiés par empreinte SHA-256 ;
-- historique et Risk Delta par facteur ;
-- indicateurs de confiance, de complétude et de fraîcheur des données ;
-- proposition de décision `GO`, `GO WITH CONDITIONS`, `NO-GO` ou
-  `INSUFFICIENT INFORMATION` ;
-- acceptation, modification ou rejet d’une recommandation par une personne ;
-- API FastAPI documentée avec OpenAPI ;
-- dashboard Streamlit ;
-- migrations Alembic et tests automatiques.
+- ingestion JSON/CSV validée et idempotente ;
+- cinq politiques QA versionnées dans `policies/qa-rules-v1.0.json` ;
+- score de risque de 0 à 100 avec contributions détaillées ;
+- preuves, données manquantes, fraîcheur et confiance ;
+- snapshots idempotents, historique et Risk Delta ;
+- Decision Brief avec `GO`, `GO_WITH_CONDITIONS`, `NO_GO` ou
+  `INSUFFICIENT_INFORMATION` ;
+- recommandations persistantes, priorisées et soumises à validation humaine ;
+- historique append-only des acceptations, modifications et rejets ;
+- suivi `IN_PROGRESS` et `COMPLETED`, avec évolution observée avant/après ;
+- rapports quotidiens et hebdomadaires, exportables en Markdown ou HTML ;
+- API FastAPI, dashboard Streamlit et exécution Docker avec SQLite persistant.
 
-## Fonctionnement
+## Architecture
 
 ```text
-Tickets, Git, CI/CD, tests et métriques
-    → ingestion et normalisation
-    → politiques QA
-    → score et contributions
-    → preuves et données manquantes
-    → snapshot et évolution
-    → décision proposée
-    → validation humaine
-```
-
-La version actuelle utilise le dataset fictif NovaShop. Les connecteurs Jira et GitHub réels ne
-sont pas encore disponibles.
-
-## Architecture du dépôt
-
-```text
-app/         API, modèles, ingestion et services QA
-dashboard/   interface Streamlit
-alembic/     migrations de la base de données
-policies/    politiques QA JSON versionnées
+app/         API FastAPI et services métier
+dashboard/   interface Streamlit consommant uniquement l’API
+alembic/     migrations de la base SQLite
+policies/    politiques QA en JSON
 data/        dataset fictif NovaShop
 tests/       tests unitaires et d’intégration
-.github/     intégration continue
+docs/        cadrage, ADR, diagrammes et guide de démonstration
+tools/       génération et conversion du dataset
 ```
 
-Le moteur QA est déterministe. Il n’utilise pas de LLM dans cette version.
+La logique métier reste hors des routes FastAPI et du dashboard. Les décisions, scores,
+priorités et rapports sont construits par des services testables dans `app/`.
 
-## Démarrage rapide
+## Démarrage rapide avec Docker
 
-Prérequis : Python 3.11 ou une version plus récente.
+Prérequis : Docker Desktop démarré.
+
+Dans PowerShell :
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build -d
+docker compose ps
+```
+
+Dans l’invite de commandes Windows (`cmd`) :
+
+```bat
+copy .env.example .env
+docker compose up --build -d
+docker compose ps
+```
+
+Accès :
+
+- API : <http://localhost:8000> ;
+- Swagger : <http://localhost:8000/docs> ;
+- dashboard : <http://localhost:8501>.
+
+La base SQLite est créée et migrée automatiquement. Charger les données NovaShop :
+
+```powershell
+Invoke-RestMethod -Method Post "http://localhost:8000/ingest/demo"
+```
+
+Pour arrêter sans perdre les données :
+
+```powershell
+docker compose down
+```
+
+Ne pas ajouter `-v` si le volume SQLite doit être conservé.
+
+## Persistance et diagnostic Docker
+
+Après un arrêt, redémarrer les conteneurs sans reconstruire l’image :
+
+```powershell
+docker compose up -d
+```
+
+Vérifier la migration active dans le conteneur API :
+
+```powershell
+docker compose exec api alembic current
+```
+
+Variables principales :
+
+| Variable | Rôle |
+|---|---|
+| `DATABASE_URL` | chemin de la base SQLite persistante |
+| `DASHBOARD_API_URL` | URL interne de l’API utilisée par Streamlit |
+| `API_PORT` | port HTTP de FastAPI |
+| `DASHBOARD_PORT` | port HTTP de Streamlit |
+
+Les valeurs de développement sont documentées dans `.env.example`. Aucun secret n’est requis
+pour le profil SQLite.
+## Démarrage local
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
+$env:DATABASE_URL="sqlite+pysqlite:///./copilote_qa.db"
 alembic upgrade head
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload
 ```
 
 Dans un second terminal :
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-Invoke-RestMethod -Method Post "http://127.0.0.1:8000/ingest/demo?reset=true"
-Invoke-RestMethod -Method Post "http://127.0.0.1:8000/risks/analyze?project_id=PRJ-COPILOTE"
+$env:API_URL="http://127.0.0.1:8000"
 streamlit run dashboard/app.py
 ```
 
-Adresses utiles :
+## Politiques QA
 
-- API : `http://127.0.0.1:8000` ;
-- documentation OpenAPI : `http://127.0.0.1:8000/docs` ;
-- dashboard : `http://127.0.0.1:8501`.
+| Politique | Condition principale |
+|---|---|
+| `QA-BLOCKED-LONG` | ticket bloqué depuis plus de 72 heures |
+| `QA-TICKET-OVERDUE` | échéance dépassée et ticket non terminé |
+| `QA-CRITICAL-BUG-OPEN` | bug critique encore ouvert |
+| `QA-PIPELINE-FAILED` | dernier build en échec |
+| `QA-COVERAGE-LOW` | couverture de tests inférieure à 70 % |
 
-La démonstration locale validée utilise SQLite. PostgreSQL reste une cible prévue, mais son
-exécution n’a pas été validée pour cette version publique.
+Le score additionne les contributions `poids × signal normalisé`, puis borne le résultat entre
+0 et 100. La confiance mesure la qualité des données : présence des sources, fraîcheur et qualité
+des relations. Elle ne représente pas une probabilité d’incident.
 
-## API
+## API principale
 
 | Méthode | Route | Rôle |
 |---|---|---|
-| `GET` | `/health` | vérifier l’API et la base |
-| `POST` | `/ingest/demo` | charger NovaShop |
-| `GET` | `/overview` | consulter les indicateurs du projet |
-| `POST` | `/risks/analyze` | exécuter l’analyse QA |
-| `GET` | `/risks` | consulter le dernier snapshot |
-| `GET` | `/risks/{risk_id}` | consulter un risque |
-| `GET` | `/risks/{risk_id}/explanation` | consulter ses preuves |
-| `POST` | `/risks/{risk_id}/decisions` | enregistrer une décision humaine |
-| `GET` | `/projects/{project_id}/risk-summary` | consulter la synthèse et la décision proposée |
-| `GET` | `/projects/{project_id}/risk-history` | consulter l’historique |
+| GET | `/health` | vérifier l’API et la base |
+| POST | `/ingest/demo` | charger les données NovaShop |
+| POST | `/risks/analyze` | lancer une analyse QA |
+| GET | `/projects/{project_id}/risk-summary` | consulter score, confiance et delta |
+| GET | `/projects/{project_id}/decision-brief` | consulter la décision suggérée |
+| GET | `/projects/{project_id}/recommendations` | filtrer les recommandations |
+| POST | `/recommendations/{id}/accept` | accepter une recommandation |
+| POST | `/recommendations/{id}/modify` | modifier une recommandation |
+| POST | `/recommendations/{id}/reject` | rejeter une recommandation |
+| POST | `/recommendations/{id}/start` | démarrer une recommandation validée |
+| POST | `/recommendations/{id}/complete` | marquer une recommandation terminée |
+| GET | `/recommendations/{id}/outcome` | observer l’évolution avant/après |
+| GET | `/projects/{project_id}/reports/daily` | construire le rapport quotidien |
+| GET | `/projects/{project_id}/reports/weekly` | construire le rapport hebdomadaire |
 
-## Tests
+La documentation exhaustive et les schémas de réponse sont disponibles dans Swagger.
+
+## Qualité
 
 ```powershell
-ruff check .
-ruff format --check .
-pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m pytest
+alembic heads
 ```
 
-La suite vérifie notamment les politiques, le score, les contributions, les snapshots,
-l’idempotence, les deltas, les preuves, la confiance, les décisions humaines, les migrations,
-l’API et le dashboard.
+GitHub Actions exécute automatiquement Ruff et les tests à chaque push et Pull Request.
 
-## Données de démonstration
+## Garde-fous
 
-NovaShop est entièrement fictif. Le dataset contient trois scénarios de sprint et des relations
-entre tickets, commits, Pull Requests, builds, tests et métriques. Il ne contient aucune donnée de
-SII, d’un client ou d’un dépôt réel.
+- décision finale humaine ;
+- `external_action_executed=false` ;
+- aucune écriture vers Jira, GitHub ou un pipeline externe ;
+- aucune relation artificielle entre les décisions historiques et les recommandations ;
+- aucune causalité attribuée à une amélioration seulement observée après une recommandation.
 
-## Limites actuelles
-
-- les sources Jira, GitHub et CI/CD sont simulées par le dataset ;
-- aucun connecteur externe réel n’est actif ;
-- aucun RAG ni système multi-agents n’est intégré ;
-- aucune prédiction Machine Learning n’est réalisée ;
-- PostgreSQL et Docker ne sont pas validés dans cette livraison ;
-- les recommandations ne déclenchent aucune action externe.
-
-## Prochaines étapes
-
-- ajouter des connecteurs externes en lecture seule ;
-- renforcer la documentation des politiques ;
-- valider PostgreSQL dans un environnement dédié ;
-- préparer les fonctions multi-agents sur le socle QA existant.
-
-## Auteur
-
-Jawad Elkharrati
+Le scénario complet est décrit dans
+[`docs/guide-demonstration-semaine4.md`](docs/guide-demonstration-semaine4.md). Les choix
+d’architecture sont documentés dans [`docs/adr/`](docs/adr/).

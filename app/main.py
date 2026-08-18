@@ -1,13 +1,22 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.api_schemas import (
+    DailyReportResponse,
+    DecisionBriefResponse,
+    DecisionReviewCreate,
+    DecisionReviewResponse,
+    RecommendationActionCreate,
+    RecommendationHistoryResponse,
+    RecommendationOutcomeResponse,
+    RecommendationResponse,
+    RecommendationTransitionResponse,
     RiskDecisionCreate,
     RiskDecisionHistoryResponse,
     RiskDecisionResponse,
@@ -16,9 +25,18 @@ from app.api_schemas import (
     RiskHistoryResponse,
     RiskSnapshotResponse,
     RiskSummaryResponse,
+    WeeklyReportResponse,
 )
 from app.config import get_settings
 from app.db import engine, get_db
+from app.decision_brief_service import (
+    DecisionBriefNotFoundError,
+    DecisionReviewError,
+    decision_brief,
+    decision_reviews,
+    review_decision,
+)
+from app.decision_domain import HumanValidationStatus, QADecision
 from app.evidence_service import build_evidence_chain
 from app.ingestion import (
     ingest_dataset,
@@ -28,7 +46,7 @@ from app.ingestion import (
     log_failed_ingestion,
     validate_payload,
 )
-from app.models import IngestionLog, Metric, Project, RiskAnalysis, Sprint, Ticket
+from app.models import IngestionLog, Metric, Project, Recommendation, RiskAnalysis, Sprint, Ticket
 from app.project_service import list_sprints, project_overview
 from app.qa_agent import (
     QAAgent,
@@ -37,7 +55,21 @@ from app.qa_agent import (
     serialize_contribution,
     serialize_risk,
 )
+from app.recommendation_domain import RecommendationStatus
+from app.recommendation_outcome_service import (
+    RecommendationOutcomeError,
+    RecommendationOutcomeNotFoundError,
+    recommendation_outcome,
+)
+from app.recommendation_service import (
+    RecommendationError,
+    RecommendationNotFoundError,
+    recommendation_history,
+    transition_recommendation,
+)
 from app.release_readiness_service import release_readiness
+from app.report_rendering import render_report_html, render_report_markdown
+from app.report_service import ReportNotFoundError, ReportPeriodError, daily_report, weekly_report
 from app.risk_decision_service import (
     RiskDecisionError,
     RiskDecisionNotFoundError,
@@ -65,8 +97,8 @@ app = FastAPI(
     version=settings.app_version,
     summary="Ingestion, vue projet et analyse QA explicable",
     description=(
-        "API d'ingestion JSON/CSV, d'indicateurs projet et d'analyse QA déterministe avec "
-        "politiques versionnées, score explicable, preuves et validation humaine."
+        "API de la semaine 3 : ingestion JSON/CSV, KPI et Agent QA déterministe avec "
+        "règles versionnées, score explicable, preuves et validation humaine."
     ),
 )
 qa_agent = QAAgent()
@@ -491,6 +523,319 @@ def risk_history(
             for row in rows
         ],
     }
+
+
+@app.get(
+    "/projects/{project_id}/decision-brief",
+    tags=["qa-decisions"],
+    response_model=DecisionBriefResponse,
+)
+def get_decision_brief(
+    project_id: str,
+    session: SessionDep,
+    sprint_id: str | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, object]:
+    _validate_scope(session, project_id, sprint_id)
+    try:
+        return decision_brief(session, project_id, sprint_id, snapshot_id)
+    except DecisionBriefNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get(
+    "/projects/{project_id}/reports/daily", tags=["reports"], response_model=DailyReportResponse
+)
+def get_daily_report(
+    project_id: str,
+    report_date: date,
+    session: SessionDep,
+    sprint_id: str | None = None,
+) -> dict[str, object]:
+    _validate_scope(session, project_id, sprint_id)
+    try:
+        return daily_report(session, project_id, report_date, sprint_id)
+    except ReportNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get(
+    "/projects/{project_id}/reports/weekly", tags=["reports"], response_model=WeeklyReportResponse
+)
+def get_weekly_report(
+    project_id: str,
+    period_start: date,
+    period_end: date,
+    session: SessionDep,
+    sprint_id: str | None = None,
+) -> dict[str, object]:
+    _validate_scope(session, project_id, sprint_id)
+    try:
+        return weekly_report(session, project_id, period_start, period_end, sprint_id)
+    except ReportNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReportPeriodError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _report_export_response(
+    report: dict[str, object],
+    export_format: Literal["markdown", "html"],
+    filename_stem: str,
+) -> Response:
+    if export_format == "html":
+        content = render_report_html(report)
+        media_type = "text/html"
+        extension = "html"
+    else:
+        content = render_report_markdown(report)
+        media_type = "text/markdown"
+        extension = "md"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename_stem}.{extension}"'},
+    )
+
+
+@app.get("/projects/{project_id}/reports/daily/export", tags=["reports"])
+def export_daily_report(
+    project_id: str,
+    report_date: date,
+    session: SessionDep,
+    sprint_id: str | None = None,
+    export_format: Literal["markdown", "html"] = Query("markdown", alias="format"),
+) -> Response:
+    _validate_scope(session, project_id, sprint_id)
+    try:
+        report = daily_report(session, project_id, report_date, sprint_id)
+    except ReportNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _report_export_response(
+        report,
+        export_format,
+        f"qa-daily-{project_id}-{report_date.isoformat()}",
+    )
+
+
+@app.get("/projects/{project_id}/reports/weekly/export", tags=["reports"])
+def export_weekly_report(
+    project_id: str,
+    period_start: date,
+    period_end: date,
+    session: SessionDep,
+    sprint_id: str | None = None,
+    export_format: Literal["markdown", "html"] = Query("markdown", alias="format"),
+) -> Response:
+    _validate_scope(session, project_id, sprint_id)
+    try:
+        report = weekly_report(session, project_id, period_start, period_end, sprint_id)
+    except ReportNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReportPeriodError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _report_export_response(
+        report,
+        export_format,
+        f"qa-weekly-{project_id}-{period_start.isoformat()}-{period_end.isoformat()}",
+    )
+
+
+@app.get(
+    "/projects/{project_id}/recommendations",
+    tags=["recommendations"],
+    response_model=list[RecommendationResponse],
+)
+def project_recommendations(
+    project_id: str,
+    session: SessionDep,
+    sprint_id: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+) -> list[Recommendation]:
+    _validate_scope(session, project_id, sprint_id)
+    query = select(Recommendation).where(Recommendation.project_id == project_id)
+    query = query.where(
+        Recommendation.sprint_id == sprint_id
+        if sprint_id is not None
+        else Recommendation.sprint_id.is_(None)
+    )
+    if status:
+        query = query.where(Recommendation.status == status)
+    if priority:
+        query = query.where(Recommendation.priority == priority)
+    return list(
+        session.scalars(query.order_by(Recommendation.priority_score.desc(), Recommendation.id))
+    )
+
+
+@app.get(
+    "/recommendations/{recommendation_id}",
+    tags=["recommendations"],
+    response_model=RecommendationResponse,
+)
+def get_recommendation(recommendation_id: str, session: SessionDep) -> Recommendation:
+    recommendation = session.get(Recommendation, recommendation_id)
+    if recommendation is None:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    return recommendation
+
+
+def _recommendation_action(
+    recommendation_id: str,
+    payload: RecommendationActionCreate,
+    session: Session,
+    status: RecommendationStatus,
+):
+    try:
+        return transition_recommendation(
+            session,
+            recommendation_id=recommendation_id,
+            to_status=status,
+            actor=payload.actor,
+            actor_role=payload.actor_role,
+            justification=payload.justification,
+            comment=payload.comment,
+            changes=payload.changes,
+        )
+    except RecommendationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RecommendationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post(
+    "/recommendations/{recommendation_id}/accept",
+    tags=["recommendations"],
+    response_model=RecommendationTransitionResponse,
+)
+def accept_recommendation(
+    recommendation_id: str, payload: RecommendationActionCreate, session: SessionDep
+):
+    return _recommendation_action(
+        recommendation_id, payload, session, RecommendationStatus.ACCEPTED
+    )
+
+
+@app.post(
+    "/recommendations/{recommendation_id}/modify",
+    tags=["recommendations"],
+    response_model=RecommendationTransitionResponse,
+)
+def modify_recommendation(
+    recommendation_id: str, payload: RecommendationActionCreate, session: SessionDep
+):
+    return _recommendation_action(
+        recommendation_id, payload, session, RecommendationStatus.MODIFIED
+    )
+
+
+@app.post(
+    "/recommendations/{recommendation_id}/reject",
+    tags=["recommendations"],
+    response_model=RecommendationTransitionResponse,
+)
+def reject_recommendation(
+    recommendation_id: str, payload: RecommendationActionCreate, session: SessionDep
+):
+    return _recommendation_action(
+        recommendation_id, payload, session, RecommendationStatus.REJECTED
+    )
+
+
+@app.post(
+    "/recommendations/{recommendation_id}/start",
+    tags=["recommendations"],
+    response_model=RecommendationTransitionResponse,
+)
+def start_recommendation(
+    recommendation_id: str, payload: RecommendationActionCreate, session: SessionDep
+):
+    return _recommendation_action(
+        recommendation_id, payload, session, RecommendationStatus.IN_PROGRESS
+    )
+
+
+@app.post(
+    "/recommendations/{recommendation_id}/complete",
+    tags=["recommendations"],
+    response_model=RecommendationTransitionResponse,
+)
+def complete_recommendation(
+    recommendation_id: str, payload: RecommendationActionCreate, session: SessionDep
+):
+    return _recommendation_action(
+        recommendation_id, payload, session, RecommendationStatus.COMPLETED
+    )
+
+
+@app.get(
+    "/recommendations/{recommendation_id}/history",
+    tags=["recommendations"],
+    response_model=RecommendationHistoryResponse,
+)
+def get_recommendation_history(recommendation_id: str, session: SessionDep) -> dict[str, object]:
+    try:
+        items = recommendation_history(session, recommendation_id)
+    except RecommendationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"recommendation_id": recommendation_id, "items": items}
+
+
+@app.get(
+    "/recommendations/{recommendation_id}/outcome",
+    tags=["recommendations"],
+    response_model=RecommendationOutcomeResponse,
+)
+def get_recommendation_outcome(
+    recommendation_id: str,
+    session: SessionDep,
+    observed_snapshot_id: str | None = None,
+):
+    try:
+        return recommendation_outcome(session, recommendation_id, observed_snapshot_id)
+    except RecommendationOutcomeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RecommendationOutcomeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get(
+    "/projects/{project_id}/decisions",
+    tags=["qa-decisions"],
+    response_model=list[DecisionReviewResponse],
+)
+def get_project_decisions(project_id: str, session: SessionDep) -> list[dict[str, object]]:
+    _validate_scope(session, project_id)
+    return decision_reviews(session, project_id)
+
+
+@app.post(
+    "/projects/{project_id}/decisions",
+    tags=["qa-decisions"],
+    response_model=DecisionReviewResponse,
+    status_code=201,
+)
+def create_project_decision(
+    project_id: str, payload: DecisionReviewCreate, session: SessionDep
+) -> dict[str, object]:
+    _validate_scope(session, project_id)
+    try:
+        return review_decision(
+            session,
+            project_id=project_id,
+            snapshot_id=payload.snapshot_id,
+            status=HumanValidationStatus(payload.status),
+            final_decision=QADecision(payload.final_decision) if payload.final_decision else None,
+            actor=payload.actor,
+            actor_role=payload.actor_role,
+            justification=payload.justification,
+            comment=payload.comment,
+        )
+    except DecisionBriefNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DecisionReviewError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/ingestions", tags=["ingestion"])

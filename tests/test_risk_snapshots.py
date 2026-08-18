@@ -43,8 +43,22 @@ def test_identical_analysis_reuses_immutable_snapshot_and_contributions(
     assert first["snapshot_id"] == second["snapshot_id"]
     assert first["input_fingerprint"] == second["input_fingerprint"]
     assert len(first["contributions"]) == 5
-    assert db_session.scalar(select(func.count()).select_from(RiskAnalysis)) == 1
-    assert db_session.scalar(select(func.count()).select_from(RiskContribution)) == 5
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(RiskAnalysis)
+            .where(RiskAnalysis.sprint_id == "SPR-003")
+        )
+        == 1
+    )
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(RiskContribution)
+            .where(RiskContribution.analysis_id == first["snapshot_id"])
+        )
+        == 5
+    )
 
 
 def test_changed_input_creates_snapshot_and_explains_negative_delta(db_session) -> None:

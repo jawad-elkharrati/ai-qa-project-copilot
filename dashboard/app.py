@@ -16,6 +16,7 @@ from dashboard.formatting import (
     severity_label,
     source_label,
 )
+from dashboard.mvp_dashboard import run_dashboard
 
 
 def show_api_error(error: Exception, *, stop: bool = False) -> None:
@@ -210,6 +211,10 @@ def render_data_quality(analysis: dict) -> None:
                 width="stretch",
                 hide_index=True,
             )
+
+
+run_dashboard()
+st.stop()
 
 
 st.set_page_config(page_title="Copilote QA", page_icon="🧭", layout="wide")

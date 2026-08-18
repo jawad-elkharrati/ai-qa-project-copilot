@@ -1,0 +1,59 @@
+erDiagram
+    PROJECT ||--o{ RISK_ANALYSIS : possede
+    RISK_ANALYSIS ||--o{ RISK : contient
+    RISK_ANALYSIS ||--o{ RISK_CONTRIBUTION : decompose
+    RISK_ANALYSIS ||--o{ RISK_EVIDENCE : justifie
+    RISK_ANALYSIS ||--o{ RECOMMENDATION : source
+    RECOMMENDATION ||--o{ RECOMMENDATION_TRANSITION : historise
+    RECOMMENDATION ||--o{ RECOMMENDATION_OUTCOME : observe
+    RISK_ANALYSIS ||--o| QA_DECISION_REVIEW : revoit
+    RISK ||--o{ RISK_DECISION : compatibilite_S3
+    PROJECT ||--o{ REPORT : rapport_legacy
+
+    RECOMMENDATION {
+      string id PK
+      string project_id FK
+      string source_snapshot_id FK
+      string last_seen_snapshot_id FK
+      string recommendation_key
+      string episode_key
+      string original_title
+      string original_description
+      string status
+      float priority_score
+    }
+    RECOMMENDATION_TRANSITION {
+      string id PK
+      string recommendation_id FK
+      string from_status
+      string to_status
+      string actor
+      string actor_role
+      string snapshot_id FK
+      bool external_action_executed
+    }
+    RECOMMENDATION_OUTCOME {
+      string id PK
+      string recommendation_id FK
+      string baseline_snapshot_id FK
+      string observed_snapshot_id FK
+      string status
+      float score_before
+      float score_after
+      float score_delta
+      string observation
+    }
+    QA_DECISION_REVIEW {
+      string id PK
+      string snapshot_id FK
+      string suggested_decision
+      string validation_status
+      string actor
+      bool external_action_executed
+    }
+    RISK_DECISION {
+      string id PK
+      string risk_id FK
+      string decision
+      string actor
+    }

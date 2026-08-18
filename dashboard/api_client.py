@@ -59,5 +59,33 @@ def api_get(path: str, **params):
     return _request("GET", path, params=params or None)
 
 
+def api_get_content(path: str, **params) -> tuple[bytes, str]:
+    """Download API-rendered content without interpreting it in Streamlit."""
+    try:
+        response = httpx.get(
+            f"{API_URL}{path}",
+            params=params or None,
+            timeout=READ_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.content, response.headers.get("content-type", "application/octet-stream")
+    except httpx.TimeoutException as exc:
+        raise DashboardAPIError(
+            "L'API met trop de temps à répondre. Réessayez dans quelques instants.",
+            str(exc),
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        raise DashboardAPIError(
+            f"L'API a refusé la requête (HTTP {status}).",
+            str(exc),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise DashboardAPIError(
+            "L'API QA est indisponible. Vérifiez que FastAPI est démarré.",
+            str(exc),
+        ) from exc
+
+
 def api_post(path: str, *, payload=None, **params):
     return _request("POST", path, params=params or None, payload=payload)

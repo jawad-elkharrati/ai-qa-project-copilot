@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "copilote-ia-qa"
-version = "0.4.0"
-description = "Prototype d'aide à la décision QA avec score de risque explicable"
+version = "0.4.1"
+description = "Moteur QA explicable du PFA Copilote IA multi-agents pour le QA"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,9 +26,12 @@ dev = [
   "pytest-cov>=6,<7",
   "ruff>=0.9,<1",
 ]
+report = [
+  "reportlab>=4.2,<5",
+]
 
 [tool.setuptools.packages.find]
-include = ["app*", "dashboard*"]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --cov=app --cov-report=term-missing"
@@ -46,6 +49,7 @@ skip_covered = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [".ua"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]

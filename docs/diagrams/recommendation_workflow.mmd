@@ -1,0 +1,19 @@
+stateDiagram-v2
+    [*] --> PROPOSED
+    PROPOSED --> ACCEPTED: accept
+    PROPOSED --> MODIFIED: modify
+    PROPOSED --> REJECTED: reject
+    ACCEPTED --> IN_PROGRESS: start
+    MODIFIED --> IN_PROGRESS: start
+    ACCEPTED --> COMPLETED: complete (compatibilité P0)
+    MODIFIED --> COMPLETED: complete (compatibilité P0)
+    IN_PROGRESS --> COMPLETED: complete avec commentaire
+    REJECTED --> [*]
+    COMPLETED --> [*]
+
+    note right of IN_PROGRESS
+      Seuls assigned_to et due_date peuvent changer.
+      Chaque transition est append-only.
+      Acteur, rôle, justification et snapshot sont conservés.
+      external_action_executed reste false.
+    end note
